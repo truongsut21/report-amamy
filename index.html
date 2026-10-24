@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amamy Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preload" href="data/amamy.xlsx" as="fetch" crossorigin>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">A</span>
+      <div>
+        <h1>Amamy · Tổng hợp đơn hàng</h1>
+        <p id="meta" class="muted">Đang tải dữ liệu…</p>
+      </div>
+    </div>
+    <div class="actions">
+      <label class="btn" title="Mở một file .xlsx khác từ máy (không tải lên đâu cả)">
+        <input id="file" type="file" accept=".xlsx,.xls" hidden>
+        Mở file xlsx
+      </label>
+      <button id="reload" class="btn" type="button" title="Tải lại data/amamy.xlsx">Tải lại</button>
+      <button id="theme" class="btn icon" type="button" aria-label="Đổi giao diện sáng/tối">◐</button>
+    </div>
+  </header>
+
+  <nav id="tabs" class="tabs" role="tablist"></nav>
+
+  <main id="view" class="view">
+    <div class="loading"><div class="spinner"></div><p>Đang đọc file Excel…</p></div>
+  </main>
+
+  <div id="drop" class="drop" hidden><p>Thả file .xlsx vào đây</p></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
