@@ -13,13 +13,101 @@ self.onmessage = function (e) {
   }
 };
 
-/* ---------------- helpers ---------------- */
-function sheetRows(wb, name) {
-  var ws = wb.Sheets[name];
-  if (!ws) return null;
-  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })
-    .slice(1)
-    .filter(function (r) { return r[0] != null && r[0] !== ''; });
+/* ---------------- đọc sheet ---------------- */
+var TABLE_SHEETS = ['Khách hàng', 'Chi tiết đơn', 'Theo line', 'Theo quốc gia', 'Theo thành phố',
+  'Theo mã nguồn', 'Theo tháng', 'Phân loại khách', 'Theo kênh'];
+
+// { tên sheet: { header, rows } } – bỏ dòng trống và cột trống ở cuối, ngày → "YYYY-MM-DD"
+function loadSheets(wb) {
+  var out = {};
+  TABLE_SHEETS.forEach(function (name) {
+    var ws = wb.Sheets[name];
+    if (!ws) return;
+    var all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    var header = (all[0] || []).map(function (h) { return h == null ? '' : String(h); });
+    while (header.length && !header[header.length - 1]) header.pop();
+    var rows = all.slice(1).filter(function (r) { return r[0] != null && r[0] !== ''; }).map(function (r) {
+      return header.map(function (_, i) { var v = r[i]; return v instanceof Date ? day(v) : v; });
+    });
+    out[name] = { header: header, rows: rows };
+  });
+  return out;
+}
+
+/* ---------------- tính lại cột công thức ----------------
+ * File xuất bằng Python/openpyxl chỉ có công thức, không có giá trị đã tính (Excel tính khi mở).
+ * Ô công thức nào trống thì tính lại đúng như công thức trong file (COUNTIFS / SUMIFS / chia).
+ */
+function isBlank(v) { return v == null || v === ''; }
+function fill(row, i, fn) { if (isBlank(row[i])) row[i] = fn(); }
+function ratio(a, b) { return b > 0 ? a / b : 0; }
+
+// Nhóm dòng nguồn theo cột khoá → { key: [rows] }. Không phân biệt hoa/thường, giống COUNTIFS/SUMIFS
+function groupBy(rows, col) {
+  var m = {};
+  rows.forEach(function (r) { var k = isBlank(r[col]) ? '' : String(r[col]).toLowerCase(); (m[k] = m[k] || []).push(r); });
+  return m;
+}
+function sumCol(rows, col) { return rows.reduce(function (a, r) { return a + num(r[col]); }, 0); }
+
+function fillFormulas(S) {
+  var det = S['Chi tiết đơn'], kh = S['Khách hàng'];
+
+  // Khách hàng: T = S/Q, U = % lũy kế doanh thu (sheet đã sắp theo tiền giảm dần)
+  if (kh) {
+    var total = sumCol(kh.rows, 18), run = 0;
+    kh.rows.forEach(function (r) {
+      run += num(r[18]);
+      fill(r, 19, function () { return ratio(num(r[18]), num(r[16])); });
+      fill(r, 20, function () { return ratio(run, total); });
+    });
+  }
+
+  // Theo line / quốc gia / thành phố / mã nguồn / tháng: COUNTIFS/SUMIFS trên Chi tiết đơn
+  // Chi tiết đơn: B Tháng, E Line, J Quốc gia, N Kg, O Tiền, Q Thành phố (quốc gia), R Mã nguồn
+  if (det) {
+    [['Theo line', 4], ['Theo quốc gia', 9], ['Theo thành phố', 16], ['Theo mã nguồn', 17], ['Theo tháng', 1]]
+      .forEach(function (d) {
+        var t = S[d[0]];
+        if (!t) return;
+        var g = groupBy(det.rows, d[1]);
+        t.rows.forEach(function (r) {
+          var src = g[String(r[0]).toLowerCase()] || [];
+          fill(r, 1, function () { return src.length; });
+          fill(r, 4, function () { return ratio(num(r[3]), num(r[2])); });
+          fill(r, 5, function () { return src.filter(function (o) { return num(o[14]) > 0; }).length; });
+          fill(r, 6, function () { return sumCol(src, 13); });
+          fill(r, 7, function () { return sumCol(src, 14); });
+        });
+        var totalH = sumCol(t.rows, 7);
+        t.rows.forEach(function (r) {
+          fill(r, 8, function () { return ratio(num(r[7]), totalH); });
+          fill(r, 9, function () { return ratio(num(r[7]), num(r[5])); });
+          fill(r, 10, function () { return ratio(num(r[7]), num(r[6])); });
+        });
+      });
+  }
+
+  // Phân loại khách / Theo kênh: COUNTIFS/SUMIFS trên Khách hàng (C Phân loại, N Kênh, P Số đơn, R Kg, S Tiền)
+  if (kh) {
+    [['Phân loại khách', 2], ['Theo kênh', 13]].forEach(function (d) {
+      var t = S[d[0]];
+      if (!t) return;
+      var g = groupBy(kh.rows, d[1]);
+      t.rows.forEach(function (r) {
+        var src = g[String(r[0]).toLowerCase()] || [];
+        fill(r, 1, function () { return src.length; });
+        fill(r, 2, function () { return src.filter(function (c) { return num(c[15]) >= 2; }).length; });
+        fill(r, 3, function () { return ratio(num(r[2]), num(r[1])); });
+        fill(r, 4, function () { return sumCol(src, 15); });
+        fill(r, 5, function () { return sumCol(src, 17); });
+        fill(r, 6, function () { return sumCol(src, 18); });
+      });
+      var totalG = sumCol(t.rows, 6);
+      t.rows.forEach(function (r) { fill(r, 7, function () { return ratio(num(r[6]), totalG); }); });
+    });
+  }
+  return S;
 }
 
 // Số có thể là number, chuỗi "1,234", "12.5%", hoặc "-" (= trống)
@@ -89,7 +177,7 @@ function customers(rs) {
   var inRange = function (arr, lo, hi) { return arr.filter(function (v) { return v != null && v >= lo && v <= hi; }).length; };
 
   var newByMonth = countBy(rs, function (r) { return day(r[21]).slice(0, 7); });
-  var top = rs.map(function (r, i) { return { name: String(r[5] || '?') + ' (' + r[1] + ')', rev: revs[i] }; })
+  var top = rs.map(function (r, i) { return { name: String(r[5] || '?') + ' (' + (r[3] || r[1]) + ')', rev: revs[i] }; })
     .filter(function (x) { return x.rev > 0; })
     .sort(function (a, b) { return b.rev - a.rev; }).slice(0, 15);
 
@@ -163,28 +251,9 @@ function orders(rs) {
   };
 }
 
-// Dữ liệu gốc của từng sheet để hiện bảng (bỏ các tab "📊 …" và cột trống ở cuối)
-var TABLE_SHEETS = ['Khách hàng', 'Chi tiết đơn', 'Theo line', 'Theo quốc gia', 'Theo thành phố',
-  'Theo mã nguồn', 'Theo tháng', 'Phân loại khách', 'Theo kênh'];
-
-function tables(wb) {
-  var out = {};
-  TABLE_SHEETS.forEach(function (name) {
-    var ws = wb.Sheets[name];
-    if (!ws) return;
-    var all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-    var header = (all[0] || []).map(function (h) { return h == null ? '' : String(h); });
-    while (header.length && !header[header.length - 1]) header.pop();
-    var rows = all.slice(1).filter(function (r) { return r[0] != null && r[0] !== ''; }).map(function (r) {
-      return header.map(function (_, i) { var v = r[i]; return v instanceof Date ? day(v) : v; });
-    });
-    out[name] = { header: header, rows: rows };
-  });
-  return out;
-}
-
 function build(wb) {
-  var get = function (name, fn) { var rs = sheetRows(wb, name); return rs ? fn(rs) : null; };
+  var S = fillFormulas(loadSheets(wb));
+  var get = function (name, fn) { return S[name] ? fn(S[name].rows) : null; };
   var notes = wb.Sheets['Ghi chú'] ? XLSX.utils.sheet_to_json(wb.Sheets['Ghi chú'], { header: 1, raw: false })
     .map(function (r) { return r[0]; }).filter(Boolean) : [];
   return {
@@ -199,6 +268,6 @@ function build(wb) {
     segment: get('Phân loại khách', segment),
     channel: get('Theo kênh', segment),
     notes: notes,
-    tables: tables(wb)
+    tables: S
   };
 }
