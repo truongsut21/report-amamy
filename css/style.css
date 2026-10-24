@@ -109,20 +109,35 @@ body {
 /* ---------- tabs ---------- */
 .tabs {
   position: sticky; top: 0; z-index: 10;
-  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
   padding: 8px clamp(16px, 3vw, 32px);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.tabs::-webkit-scrollbar { display: none; }
-.tabs a {
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+  .tabs {
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+}
+.tab-links { display: flex; flex-wrap: wrap; gap: 4px; max-width: 1400px; margin: 0 auto; }
+.tab-links a {
   flex: none; padding: 6px 12px; border-radius: 999px; text-decoration: none;
   color: var(--text-secondary); font-weight: 500; font-size: 13px; white-space: nowrap;
   transition: background .15s, color .15s;
 }
-.tabs a:hover { background: var(--surface-2); color: var(--text-primary); }
-.tabs a[aria-selected="true"] { background: var(--text-primary); color: var(--surface-1); }
+.tab-links a:hover { background: var(--surface-2); color: var(--text-primary); }
+.tab-links a[aria-selected="true"] { background: var(--text-primary); color: var(--surface-1); }
+.tab-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-select {
+  display: none; width: 100%; font: inherit; font-size: 15px; font-weight: 600;
+  padding: 9px 36px 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-1) url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M2 4l4 4 4-4%27 fill=%27none%27 stroke=%27%237c7b76%27 stroke-width=%271.6%27/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text-primary); appearance: none; -webkit-appearance: none;
+}
+@media (max-width: 640px) {
+  .tab-links { display: none; }
+  .tab-select { display: block; }
+}
 
 /* ---------- view ---------- */
 .view { max-width: 1400px; margin: 0 auto; padding: 20px clamp(16px, 3vw, 32px) 48px; }

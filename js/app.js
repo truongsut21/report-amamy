@@ -6,7 +6,7 @@
   var CACHE_KEY = 'amamy-model-v2';
   var f = C.fmt, S = C.series;
 
-  var model = null, sourceName = 'amamy.xlsx', charts = [], observer = null, worker = null;
+  var lastTab = null, model = null, sourceName = 'amamy.xlsx', charts = [], observer = null, worker = null;
   var $view = document.getElementById('view'), $tabs = document.getElementById('tabs'), $meta = document.getElementById('meta');
 
   var TABS = [
@@ -391,10 +391,17 @@
     return tabs.filter(function (t) { return t.id === id; })[0] || tabs[0];
   }
 
+  // Màn rộng: các nút tab (tự xuống dòng). Màn hẹp: dropdown (CSS quyết định cái nào hiện)
   function renderTabs() {
-    $tabs.replaceChildren.apply($tabs, available().map(function (t) {
+    var tabs = available();
+    var select = el('select', { class: 'tab-select', 'aria-label': 'Chọn tab' }, tabs.map(function (t) {
+      return el('option', { value: t.id, text: t.title });
+    }));
+    select.addEventListener('change', function () { location.hash = select.value; });
+    var links = el('div', { class: 'tab-links', role: 'tablist' }, tabs.map(function (t) {
       return el('a', { href: '#' + t.id, role: 'tab', 'data-id': t.id, text: t.title });
     }));
+    $tabs.replaceChildren(links, select);
   }
 
   function destroyCharts() {
@@ -407,11 +414,17 @@
     if (!model) return;
     var tab = current();
     if (!tab) { showError('File không có tab nào khớp với cấu trúc dashboard.'); return; }
-    Array.prototype.forEach.call($tabs.children, function (a) {
-      var on = a.getAttribute('data-id') === tab.id;
-      a.setAttribute('aria-selected', on);
-      if (on) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    $tabs.querySelectorAll('a[data-id]').forEach(function (a) {
+      a.setAttribute('aria-selected', a.getAttribute('data-id') === tab.id);
     });
+    var select = $tabs.querySelector('select');
+    if (select) select.value = tab.id;
+    // Đổi tab khi đang cuộn giữa trang → đưa về đầu nội dung tab mới
+    if (lastTab && lastTab !== tab.id) {
+      var top = $view.getBoundingClientRect().top + window.scrollY - $tabs.offsetHeight;
+      if (window.scrollY > top) window.scrollTo(0, top);
+    }
+    lastTab = tab.id;
     destroyCharts();
     var nodes = tab.render(model);
     var sheet = model.tables && model.tables[tab.title]; // tên tab = tên sheet nguồn
